@@ -8,6 +8,7 @@ import {
   sendEmailVerification,
   signInWithEmailAndPassword,
 } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 import { createUser, updateUser } from '../database';
 
 const AuthContext = createContext();
