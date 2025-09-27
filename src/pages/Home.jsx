@@ -7,7 +7,7 @@ function Home() {
   const { isAuthenticated, user, logout } = useAuth();
 
   return (
-    <main id="main-content" className="py-24 px-6 flex flex-col items-center w-full min-h-screen" role="main">
+    <main id="main-content" className="py-18 px-6 flex flex-col items-center w-full min-h-screen" role="main">
       <h1 className="text-center text-7xl font-bold w-fit" id="main-heading">I Cane See</h1>
       {isAuthenticated && user && (
         <p className="text-center text-xl mt-4" role="status">Welcome back, {user.name}!</p>

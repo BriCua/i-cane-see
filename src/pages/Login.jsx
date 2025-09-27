@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import BackButton from '../components/BackButton';
@@ -10,14 +10,21 @@ export default function Login() {
   const [googleError, setGoogleError] = useState('');
   const [mode, setMode] = useState('login'); // 'login' or 'register'
   const [verificationSent, setVerificationSent] = useState(false);
-  const { login, loginWithGoogle, register } = useAuth();
+  const { login, loginWithGoogle, register, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/');
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
     try {
       await login(email, password);
+      window.location.reload();
     } catch (error) {
       setError('Invalid email or password.');
       return;
@@ -46,6 +53,7 @@ export default function Login() {
     try {
       setGoogleError('');
       await loginWithGoogle();
+      window.location.reload();
     } catch (error) {
       setGoogleError('Google sign-in failed. Please try again.');
       return;
