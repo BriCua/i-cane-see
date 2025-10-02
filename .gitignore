@@ -25,3 +25,5 @@ dist-ssr
 
 # Environment variables
 .env
+tuna_V4/secrets.h
+tuna_V4/config.h

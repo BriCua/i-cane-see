@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { auth, googleProvider, db } from '../firebase';
+import { auth, googleProvider, db, rtdb } from '../firebase';
 import {
   signInWithPopup,
   signOut,
@@ -8,6 +8,7 @@ import {
   sendEmailVerification,
   signInWithEmailAndPassword,
 } from 'firebase/auth';
+import { ref, onValue } from "firebase/database";
 import { doc, getDoc } from 'firebase/firestore';
 import { createUser, updateUser } from '../database';
 
@@ -23,7 +24,15 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [rawFirebaseUser, setRawFirebaseUser] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Cane State
+  const [caneDevice, setCaneDevice] = useState(null);
+  const [caneStatus, setCaneStatus] = useState("Disconnected");
+  const [isTtsEnabled, setIsTtsEnabled] = useState(false);
+  const [bleCharacteristics, setBleCharacteristics] = useState(null);
+  const [lastCaneMessage, setLastCaneMessage] = useState(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -51,6 +60,7 @@ export const AuthProvider = ({ children }) => {
       } else {
         setUser(null);
       }
+      setRawFirebaseUser(firebaseUser);
       setLoading(false);
     });
 
@@ -96,10 +106,154 @@ export const AuthProvider = ({ children }) => {
   const updateProfile = async (updatedData) => {
     if (!user) return;
     await updateUser(user.id, updatedData);
-    setUser({ ...user, ...updatedData });
+    // After updating Firestore, update the local user state to reflect changes
+    // by updating the user.profile property.
+    const updatedUser = { ...user, profile: { ...user.profile, ...updatedData } };
+    setUser(updatedUser);
+  };
+
+  // --- Cane Functions ---
+
+  const SERVICE_UUID = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+  const WIFI_SSID_CHAR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+  const WIFI_PASS_CHAR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a9';
+  const USER_UID_CHAR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26ab';
+  const FIREBASE_TOKEN_CHAR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26aa';
+  const FIREBASE_TOKEN_STATUS_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26ac';
+  const CANE_STATUS_CHAR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26ad';
+
+  const handleStatusNotification = (event) => {
+    const value = event.target.value;
+    const decoder = new TextDecoder('utf-8');
+    const status = decoder.decode(value);
+    setCaneStatus(status);
+  };
+
+  const connectCane = async () => {
+    try {
+      const bleDevice = await navigator.bluetooth.requestDevice({
+        filters: [{ services: [SERVICE_UUID] }],
+        optionalServices: [SERVICE_UUID]
+      });
+
+      setCaneDevice(bleDevice);
+      setCaneStatus(`Found device: ${bleDevice.name}. Connecting...`);
+
+      const server = await bleDevice.gatt.connect();
+      setCaneStatus('Connected. Fetching service...');
+
+      const service = await server.getPrimaryService(SERVICE_UUID);
+      setCaneStatus('Service fetched. Getting characteristics...');
+
+      const [
+        wifiSsid,
+        wifiPass,
+        userUid,
+        firebaseToken,
+        tokenStatus,
+        caneStatus
+      ] = await Promise.all([
+        service.getCharacteristic(WIFI_SSID_CHAR_UUID),
+        service.getCharacteristic(WIFI_PASS_CHAR_UUID),
+        service.getCharacteristic(USER_UID_CHAR_UUID),
+        service.getCharacteristic(FIREBASE_TOKEN_CHAR_UUID),
+        service.getCharacteristic(FIREBASE_TOKEN_STATUS_UUID),
+        service.getCharacteristic(CANE_STATUS_CHAR_UUID)
+      ]);
+
+      setBleCharacteristics({
+        wifiSsid,
+        wifiPass,
+        userUid,
+        firebaseToken,
+        tokenStatus,
+        caneStatus
+      });
+
+      await caneStatus.startNotifications();
+      caneStatus.addEventListener('characteristicvaluechanged', handleStatusNotification);
+
+      setCaneStatus('Ready to send credentials.');
+
+    } catch (error) {
+      console.error('Web Bluetooth API Error:', error);
+      setCaneStatus(`Error: ${error.message}`);
+    }
+  };
+
+  const disconnectCane = () => {
+    if (caneDevice) {
+      caneDevice.gatt.disconnect();
+      setCaneDevice(null);
+      setBleCharacteristics(null);
+      setCaneStatus("Disconnected");
+    }
+  };
+
+  const sendCaneCredentials = async (wifiSSID, wifiPassword) => {
+    if (!caneDevice || !bleCharacteristics) {
+      setCaneStatus('Error: No device or characteristics found.');
+      return;
+    }
+    if (!wifiSSID || !wifiPassword) {
+      setCaneStatus('Error: Please enter your Wi-Fi SSID and password.');
+      return;
+    }
+    if (!rawFirebaseUser) {
+        setCaneStatus('Error: User not logged in.');
+        return;
+    }
+
+    setCaneStatus('Sending credentials to cane...');
+
+    try {
+      const encoder = new TextEncoder();
+
+      await bleCharacteristics.wifiSsid.writeValue(encoder.encode(wifiSSID));
+      await bleCharacteristics.userUid.writeValue(encoder.encode(rawFirebaseUser.uid));
+      await bleCharacteristics.wifiPass.writeValue(encoder.encode(wifiPassword));
+
+      const firebaseIdToken = await rawFirebaseUser.getIdToken();
+      const chunkSize = 200;
+
+      await bleCharacteristics.tokenStatus.writeValue(encoder.encode("START"));
+      
+      for (let i = 0; i < firebaseIdToken.length; i += chunkSize) {
+        const chunk = firebaseIdToken.substring(i, i + chunkSize);
+        await bleCharacteristics.firebaseToken.writeValue(encoder.encode(chunk));
+      }
+
+      await bleCharacteristics.tokenStatus.writeValue(encoder.encode("END"));
+      
+      setCaneStatus('Credentials sent. Waiting for status from cane...');
+
+    } catch (error) {
+      console.error('Error sending credentials:', error);
+      setCaneStatus(`Error: ${error.message}`);
+    }
+  };
+
+  const enableTts = () => {
+    if (user) {
+      const confirmation = new SpeechSynthesisUtterance("Verbal warnings enabled.");
+      speechSynthesis.speak(confirmation);
+      setIsTtsEnabled(true);
+
+      const statusRef = ref(rtdb, `/canes/${user.id}/status`);
+      onValue(statusRef, (snapshot) => {
+        const status = snapshot.val();
+        console.log("Received status from Firebase:", status);
+        setLastCaneMessage(status);
+        if (status && typeof status === 'string' && status.trim() !== '') {
+          const utterance = new SpeechSynthesisUtterance(status);
+          speechSynthesis.speak(utterance);
+        }
+      });
+    }
   };
 
   const value = {
+    rawFirebaseUser,
     user,
     login,
     loginWithGoogle,
@@ -108,6 +262,16 @@ export const AuthProvider = ({ children }) => {
     updateProfile,
     isAuthenticated: !!user,
     loading,
+
+    // Cane State and Functions
+    caneDevice,
+    caneStatus,
+    isTtsEnabled,
+    connectCane,
+    disconnectCane,
+    sendCaneCredentials,
+    enableTts,
+    lastCaneMessage,
   };
 
   return (

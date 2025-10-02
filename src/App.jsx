@@ -3,6 +3,7 @@ import Home from "./pages/Home";
 import Settings from "./pages/Settings";
 import Profile from "./pages/Profile";
 import Login from "./pages/Login";
+import ConnectCane from "./pages/ConnectCane";
 import ProtectedRoute from "./components/ProtectedRoute";
 import './App.css';
 
@@ -21,6 +22,7 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+        <Route path="/connect-cane" element={<ProtectedRoute><ConnectCane /></ProtectedRoute>} />
       </Routes>
     </>
   );

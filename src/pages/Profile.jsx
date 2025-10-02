@@ -32,7 +32,7 @@ export default function Profile() {
     try {
       await updateProfile(formData);
       alert('Profile updated successfully!');
-    } catch (error) {
+    } catch (_error) {
       alert('Failed to update profile.');
     }
   };
@@ -65,9 +65,7 @@ export default function Profile() {
                 value={formData.name}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                aria-describedby="name-desc"
               />
-              <p id="name-desc" className="text-sm text-gray-600 mt-1">Your display name in the app.</p>
             </div>
 
             <div>
@@ -79,9 +77,7 @@ export default function Profile() {
                 value={formData.email}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                aria-describedby="email-desc"
               />
-              <p id="email-desc" className="text-sm text-gray-600 mt-1">Used for account recovery and notifications.</p>
             </div>
 
             <div>
@@ -93,29 +89,23 @@ export default function Profile() {
                 value={formData.bio}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                aria-describedby="bio-desc"
               ></textarea>
-              <p id="bio-desc" className="text-sm text-gray-600 mt-1">A short description about yourself.</p>
             </div>
 
             <button
               type="submit"
               className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 font-medium"
-              aria-describedby="save-profile-desc"
             >
               Save Profile
             </button>
-            <p id="save-profile-desc" className="text-sm text-gray-600 text-center">Click to update your profile information.</p>
           </fieldset>
         </form>
         <button
           onClick={logout}
           className="w-full mt-4 px-4 py-3 bg-red-600 text-white rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 font-medium"
-          aria-describedby="logout-desc"
         >
           Logout
         </button>
-        <p id="logout-desc" className="text-sm text-gray-600 text-center mt-1">Click to sign out of your account</p>
       </div>
     </div>
   );
