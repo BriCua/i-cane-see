@@ -8,7 +8,7 @@ import {
   sendEmailVerification,
   signInWithEmailAndPassword,
 } from 'firebase/auth';
-import { ref, onValue } from "firebase/database";
+import { ref, onValue, set } from "firebase/database";
 import { doc, getDoc } from 'firebase/firestore';
 import { createUser, updateUser } from '../database';
 
@@ -47,7 +47,6 @@ export const AuthProvider = ({ children }) => {
         if (docSnap.exists()) {
           setUser({ id: firebaseUser.uid, ...docSnap.data() });
         } else {
-          // If no profile exists, create one
           const newUser = {
             name: firebaseUser.displayName || firebaseUser.email.split('@')[0],
             email: firebaseUser.email,
@@ -106,8 +105,6 @@ export const AuthProvider = ({ children }) => {
   const updateProfile = async (updatedData) => {
     if (!user) return;
     await updateUser(user.id, updatedData);
-    // After updating Firestore, update the local user state to reflect changes
-    // by updating the user.profile property.
     const updatedUser = { ...user, profile: { ...user.profile, ...updatedData } };
     setUser(updatedUser);
   };
@@ -214,6 +211,7 @@ export const AuthProvider = ({ children }) => {
       await bleCharacteristics.wifiPass.writeValue(encoder.encode(wifiPassword));
 
       const firebaseIdToken = await rawFirebaseUser.getIdToken();
+      console.log("ID Token:", firebaseIdToken);
       const chunkSize = 200;
 
       await bleCharacteristics.tokenStatus.writeValue(encoder.encode("START"));
@@ -242,13 +240,24 @@ export const AuthProvider = ({ children }) => {
       const statusRef = ref(rtdb, `/canes/${user.id}/status`);
       onValue(statusRef, (snapshot) => {
         const status = snapshot.val();
-        console.log("Received status from Firebase:", status);
         setLastCaneMessage(status);
+        console.log("Received status from Firebase:", status);
         if (status && typeof status === 'string' && status.trim() !== '') {
           const utterance = new SpeechSynthesisUtterance(status);
           speechSynthesis.speak(utterance);
         }
       });
+
+      // --- Web App RTDB Connectivity Test ---
+      const testPath = `/canes/${user.id}/webapp_status`;
+      set(ref(rtdb, testPath), "Web app connected at " + new Date().toLocaleString())
+        .then(() => {
+          console.log("Web app RTDB test write SUCCESS to:", testPath);
+        })
+        .catch((error) => {
+          console.error("Web app RTDB test write FAILED to:", testPath, error);
+        });
+      // --- End Web App RTDB Connectivity Test ---
     }
   };
 
