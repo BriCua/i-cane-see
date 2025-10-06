@@ -115,8 +115,6 @@ export const AuthProvider = ({ children }) => {
   const WIFI_SSID_CHAR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
   const WIFI_PASS_CHAR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a9';
   const USER_UID_CHAR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26ab';
-  const FIREBASE_TOKEN_CHAR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26aa';
-  const FIREBASE_TOKEN_STATUS_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26ac';
   const CANE_STATUS_CHAR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26ad';
 
   const handleStatusNotification = (event) => {
@@ -146,15 +144,11 @@ export const AuthProvider = ({ children }) => {
         wifiSsid,
         wifiPass,
         userUid,
-        firebaseToken,
-        tokenStatus,
         caneStatus
       ] = await Promise.all([
         service.getCharacteristic(WIFI_SSID_CHAR_UUID),
         service.getCharacteristic(WIFI_PASS_CHAR_UUID),
         service.getCharacteristic(USER_UID_CHAR_UUID),
-        service.getCharacteristic(FIREBASE_TOKEN_CHAR_UUID),
-        service.getCharacteristic(FIREBASE_TOKEN_STATUS_UUID),
         service.getCharacteristic(CANE_STATUS_CHAR_UUID)
       ]);
 
@@ -162,8 +156,6 @@ export const AuthProvider = ({ children }) => {
         wifiSsid,
         wifiPass,
         userUid,
-        firebaseToken,
-        tokenStatus,
         caneStatus
       });
 
@@ -210,19 +202,6 @@ export const AuthProvider = ({ children }) => {
       await bleCharacteristics.userUid.writeValue(encoder.encode(rawFirebaseUser.uid));
       await bleCharacteristics.wifiPass.writeValue(encoder.encode(wifiPassword));
 
-      const firebaseIdToken = await rawFirebaseUser.getIdToken();
-      console.log("ID Token:", firebaseIdToken);
-      const chunkSize = 200;
-
-      await bleCharacteristics.tokenStatus.writeValue(encoder.encode("START"));
-      
-      for (let i = 0; i < firebaseIdToken.length; i += chunkSize) {
-        const chunk = firebaseIdToken.substring(i, i + chunkSize);
-        await bleCharacteristics.firebaseToken.writeValue(encoder.encode(chunk));
-      }
-
-      await bleCharacteristics.tokenStatus.writeValue(encoder.encode("END"));
-      
       setCaneStatus('Credentials sent. Waiting for status from cane...');
 
     } catch (error) {
@@ -238,12 +217,40 @@ export const AuthProvider = ({ children }) => {
       setIsTtsEnabled(true);
 
       const statusRef = ref(rtdb, `/canes/${user.id}/status`);
+      const messageMap = {
+        0: "Atas ",
+        1: "Depan Atas ",
+        2: "Depan ",
+        3: "Depan Bawah ",
+        4: "Bawah ",
+        5: "Turunan Dalam ",
+        6: "Turunan "
+      };
+
       onValue(statusRef, (snapshot) => {
-        const status = snapshot.val();
-        setLastCaneMessage(status);
-        console.log("Received status from Firebase:", status);
-        if (status && typeof status === 'string' && status.trim() !== '') {
-          const utterance = new SpeechSynthesisUtterance(status);
+        const status_codes = snapshot.val();
+        let message = "";
+
+        if (status_codes && Array.isArray(status_codes)) {
+          for (let i = 0; i < status_codes.length && i < 3; i++) {
+            const code = status_codes[i];
+            if (messageMap[code]) {
+              message += messageMap[code];
+            }
+          }
+        } else {
+          console.log("Received null status, clearing message.");
+        }
+        
+        setLastCaneMessage(message);
+        console.log("Received status codes from Firebase:", status_codes);
+        console.log("Translated message:", message);
+
+        // Always cancel previous speech to avoid queueing and overlaps
+        speechSynthesis.cancel();
+
+        if (message.trim() !== '') {
+          const utterance = new SpeechSynthesisUtterance(message);
           speechSynthesis.speak(utterance);
         }
       });
@@ -269,7 +276,7 @@ export const AuthProvider = ({ children }) => {
     logout,
     register,
     updateProfile,
-    isAuthenticated: !!user,
+    isAuthenticated: !!rawFirebaseUser,
     loading,
 
     // Cane State and Functions

@@ -2,6 +2,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import BackButton from "../components/BackButton";
+import { rtdb } from '../firebase';
+import { ref, set } from 'firebase/database';
 
 export default function Settings() {
   const { user, updateProfile } = useAuth();
@@ -46,8 +48,18 @@ export default function Settings() {
     e.preventDefault();
     setStatusMessage('');
     try {
-      // To keep the user document clean, we'll store all settings under a single 'settings' field.
+      // 1. Save all settings to Firestore for persistence via the AuthContext
       await updateProfile({ settings });
+
+      // 2. Save hardware-specific settings to Realtime Database for the cane
+      if (user) {
+        const caneSettingsRef = ref(rtdb, `canes/${user.id}/settings`);
+        await set(caneSettingsRef, {
+          enableSound: settings.sound,
+          enableVibration: settings.vibration,
+        });
+      }
+
       setStatusMessage('Settings saved successfully!');
     } catch (error) {
       setStatusMessage('Failed to save settings.');

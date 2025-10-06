@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "i-cane-see-be95e"
-  }
+    "default": "i-cane-see-be95e",
+    "i-cane-see": "i-cane-see-reborned"
+  },
+  "targets": {},
+  "etags": {}
 }

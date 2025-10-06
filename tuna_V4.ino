@@ -35,7 +35,6 @@ bool deviceConnected = false;
 // Timers
 unsigned long lastSensorRead = 0;
 unsigned long lastNetworkUpdate = 0;
-unsigned long lastSettingsCheck = 0;
 
 // Settings
 bool g_soundEnabled = true;
@@ -211,8 +210,6 @@ void handle_network() {
     }
 
     if (changed) {
-      // Update the 'last sent' state BEFORE the network request
-      // This prevents a retry storm if the network call fails.
       lastSentObstacleCount = obstacleCount;
       for (int i = 0; i < obstacleCount; i++) {
         lastSentObstacleCodes[i] = obstacleCodes[i];
@@ -229,26 +226,6 @@ void handle_network() {
       } else {
         Firebase.RTDB.deleteNode(&fbdo, path);
       }
-    }
-  }
-
-  // Poll for settings changes
-  if (now - lastSettingsCheck > 10000) { // Check every 10 seconds
-    lastSettingsCheck = now;
-    String settingsPath = "/canes/" + user_uid + "/settings";
-    if (Firebase.RTDB.getJSON(&fbdo, settingsPath)) {
-      if (fbdo.dataType() == "json") {
-        FirebaseJson &json = fbdo.jsonObject();
-        FirebaseJsonData result;
-        if (json.get(result, "enableSound")) {
-          if (result.type == "boolean") g_soundEnabled = result.boolValue;
-        }
-        if (json.get(result, "enableVibration")) {
-          if (result.type == "boolean") g_vibrationEnabled = result.boolValue;
-        }
-      }
-    } else {
-      Serial.printf("-> FAILED to get settings: %s\n", fbdo.errorReason().c_str());
     }
   }
 }
@@ -310,7 +287,27 @@ void loop() {
          BLEDevice::getAdvertising()->stop();
          Serial.println("BLE Advertising stopped.");
       }
-      Serial.println("Firebase is ready. Device is active.");
+      
+      // Fetch settings ONCE on initialization
+      Serial.println("Firebase ready. Fetching initial settings...");
+      String settingsPath = "/canes/" + user_uid + "/settings";
+      if (Firebase.RTDB.getJSON(&fbdo, settingsPath)) {
+        if (fbdo.dataType() == "json") {
+          FirebaseJson &json = fbdo.jsonObject();
+          FirebaseJsonData result;
+          if (json.get(result, "enableSound")) {
+            if (result.type == "boolean") g_soundEnabled = result.boolValue;
+          }
+          if (json.get(result, "enableVibration")) {
+            if (result.type == "boolean") g_vibrationEnabled = result.boolValue;
+          }
+          Serial.println("Settings loaded.");
+        }
+      } else {
+        Serial.println("Could not fetch settings, using defaults.");
+      }
+
+      Serial.println("Device is active.");
       currentState = DEVICE_ACTIVE;
       break;
     }
